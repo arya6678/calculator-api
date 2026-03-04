@@ -22,3 +22,17 @@ def add(a: float, b: float):
     - JSON object with the result
     """
     return {"result": a + b}
+
+@app.get("/subtract/{a}/{b}", status_code=200)
+def subtract(a: float, b: float):
+    """
+    Subtract b from a.
+    
+    Parameters:
+    - a: First number
+    - b: Second number
+    
+    Returns:
+    - JSON object with the result
+    """
+    return {"result": a - b}
