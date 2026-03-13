@@ -1,6 +1,18 @@
+from fastapi import FastAPI, status, HTTPException, Depends
+from google.cloud import bigquery
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+# Dependency method to provide a BigQuery client
+# This will be used by the other endpoints where a database connection is necessary
+def get_bq_client():
+    # client automatically uses Cloud Run's service account credentials
+    client = bigquery.Client()
+    try:
+        yield client
+    finally:
+        client.close()
 
 app = FastAPI()
 
@@ -64,3 +76,43 @@ def calculate_tip(total: float, percentage: float):
         return JSONResponse(status_code=422, content={"error": "Total and percentage must be positive values."})
     result = total * (percentage / 100)
     return {"operation": "tip", "total": total, "percentage": percentage, "result": result}
+
+@app.get("/dbwritetest", status_code=200)
+
+def dbwritetest(bq: bigquery.Client = Depends(get_bq_client)):
+    """
+    Writes a simple test row to a BigQuery table.
+
+    Uses the `get_bq_client` dependency method to establish a connection to BigQuery.
+    """
+    # Define a Python list of objects that will become rows in the database table
+    # In this instance, there is only a single object in the list
+    row_to_insert = [
+        {
+            "endpoint": "/dbwritetest",
+            "result": "Success",
+            "status_code": 200
+        }
+    ]
+    
+    # Use the BigQuery interface to write our data to the table
+    # If there are errors, store them in a list called `errors`
+    # YOU MUST UPDATE YOUR PROJECT AND DATASET NAME BELOW BEFORE THIS WILL WORK!!!
+    errors = bq.insert_rows_json("project-ad28b983-985e-4f90-b15.calculator.api_logs", row_to_insert)
+
+    # If there were any errors, raise an HTTPException to inform the user
+    if errors:
+        # Log the full error to your Cloud Run logs for debugging
+        print(f"BigQuery Insert Errors: {errors}")
+        
+        # Raise an exception to the API user
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "message": "Failed to log data to BigQuery",
+                "errors": errors  # Optional: return specific BQ error details
+            }
+        )
+
+    # If there were NOT any errors, send a friendly response message to the API caller
+    return {"message": "Log entry created successfully"}
